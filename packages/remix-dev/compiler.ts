@@ -345,7 +345,7 @@ async function createServerBuild(
     },
     outfile: path.resolve(config.serverBuildDirectory, "index.js"),
     platform: "node",
-    format: "cjs",
+    format: config.buildOptions.serverFormat,
     target: options.target,
     inject: [reactShim],
     loader: loaders,
@@ -357,6 +357,9 @@ async function createServerBuild(
     // of CSS and other files.
     assetNames: "_assets/[name]-[hash]",
     publicPath: config.publicPath,
+    define: {
+      "process.env.NODE_ENV": JSON.stringify(options.mode)
+    },
     plugins: [
       mdxPlugin(config),
       serverRouteModulesPlugin(config),

@@ -105,8 +105,10 @@ function remix() {
       input: `${SOURCE_DIR}/index.ts`,
       output: {
         banner: createBanner("remix", version),
-        dir: `${OUTPUT_DIR}/browser`,
-        format: "esm"
+        dir: `${OUTPUT_DIR}/esm`,
+        format: "esm",
+        entryFileNames: "[name].mjs",
+        chunkFileNames: "[name].mjs"
       },
       plugins: [
         babel({
@@ -232,6 +234,28 @@ function remixServerRuntime() {
       ]
     },
     {
+      external(id) {
+        return isBareModuleId(id);
+      },
+      input: `${SOURCE_DIR}/index.ts`,
+      output: {
+        banner: createBanner("@remix-run/server-runtime", version),
+        dir: `${OUTPUT_DIR}/esm`,
+        format: "esm",
+        entryFileNames: "[name].mjs",
+        chunkFileNames: "[name].mjs",
+        preserveModules: true
+      },
+      plugins: [
+        babel({
+          babelHelpers: "bundled",
+          exclude: /node_modules/,
+          extensions: [".ts", ".tsx"]
+        }),
+        nodeResolve({ extensions: [".ts", ".tsx"] })
+      ]
+    },
+    {
       external() {
         return true;
       },
@@ -256,8 +280,10 @@ function remixServerRuntime() {
       input: `${SOURCE_DIR}/magicExports/server.ts`,
       output: {
         banner: createBanner("@remix-run/server-runtime", version),
-        dir: `${OUTPUT_DIR}/magicExports/browser`,
-        format: "esm"
+        dir: `${OUTPUT_DIR}/magicExports/esm`,
+        format: "esm",
+        entryFileNames: "[name].mjs",
+        chunkFileNames: "[name].mjs"
       },
       plugins: [
         babel({
@@ -306,6 +332,28 @@ function remixNode() {
       ]
     },
     {
+      external(id) {
+        return isBareModuleId(id);
+      },
+      input: `${SOURCE_DIR}/index.ts`,
+      output: {
+        banner: createBanner("@remix-run/node", version),
+        dir: `${OUTPUT_DIR}/esm`,
+        format: "esm",
+        preserveModules: true,
+        entryFileNames: "[name].mjs",
+        chunkFileNames: "[name].mjs"
+      },
+      plugins: [
+        babel({
+          babelHelpers: "bundled",
+          exclude: /node_modules/,
+          extensions: [".ts", ".tsx"]
+        }),
+        nodeResolve({ extensions: [".ts", ".tsx"] })
+      ]
+    },
+    {
       external() {
         return true;
       },
@@ -330,8 +378,10 @@ function remixNode() {
       input: `${SOURCE_DIR}/magicExports/platform.ts`,
       output: {
         banner: createBanner("@remix-run/node", version),
-        dir: `${OUTPUT_DIR}/magicExports/browser`,
-        format: "esm"
+        dir: `${OUTPUT_DIR}/magicExports/esm`,
+        format: "esm",
+        entryFileNames: "[name].mjs",
+        chunkFileNames: "[name].mjs"
       },
       plugins: [
         babel({
@@ -376,8 +426,10 @@ function remixCloudflareWorkers() {
       input: `${SOURCE_DIR}/magicExports/platform.ts`,
       output: {
         banner: createBanner("@remix-run/cloudflare-workers", version),
-        dir: `${OUTPUT_DIR}/magicExports/browser`,
-        format: "esm"
+        dir: `${OUTPUT_DIR}/magicExports/esm`,
+        format: "esm",
+        entryFileNames: "[name].mjs",
+        chunkFileNames: "[name].mjs"
       },
       plugins: [
         babel({
@@ -447,7 +499,7 @@ function remixReact() {
   /** @type {import("rollup").RollupOptions} */
   // This CommonJS build of remix-react is for node; both for use in running our
   // server and for 3rd party tools that work with node.
-  let remixReactNode = {
+  let remixReactCJS = {
     external(id) {
       return isBareModuleId(id);
     },
@@ -478,15 +530,17 @@ function remixReact() {
 
   // The browser build of remix-react is ESM so we can treeshake it.
   /** @type {import("rollup").RollupOptions} */
-  let remixReactBrowser = {
+  let remixReactESM = {
     external(id) {
       return isBareModuleId(id);
     },
     input: `${SOURCE_DIR}/index.tsx`,
     output: {
       banner: createBanner("@remix-run/react", version),
-      dir: `${OUTPUT_DIR}/browser`,
+      dir: `${OUTPUT_DIR}/esm`,
       format: "esm",
+      entryFileNames: "[name].mjs",
+      chunkFileNames: "[name].mjs",
       preserveModules: true
     },
     plugins: [
@@ -500,7 +554,7 @@ function remixReact() {
   };
 
   /** @type {import("rollup").RollupOptions[]} */
-  let remixReactMagicExports = {
+  let remixReactMagicExportsCJS = {
     external() {
       return true;
     },
@@ -520,15 +574,17 @@ function remixReact() {
   };
 
   /** @type {import("rollup").RollupOptions[]} */
-  let remixReactMagicExportsBrowser = {
+  let remixReactMagicExportsESM = {
     external() {
       return true;
     },
     input: `${SOURCE_DIR}/magicExports/client.ts`,
     output: {
       banner: createBanner("@remix-run/react", version),
-      dir: `${OUTPUT_DIR}/magicExports/browser`,
-      format: "esm"
+      dir: `${OUTPUT_DIR}/magicExports/esm`,
+      format: "esm",
+      entryFileNames: "[name].mjs",
+      chunkFileNames: "[name].mjs"
     },
     plugins: [
       babel({
@@ -540,10 +596,10 @@ function remixReact() {
   };
 
   return [
-    remixReactNode,
-    remixReactBrowser,
-    remixReactMagicExports,
-    remixReactMagicExportsBrowser
+    remixReactCJS,
+    remixReactESM,
+    remixReactMagicExportsCJS,
+    remixReactMagicExportsESM
   ];
 }
 
@@ -598,7 +654,18 @@ function remixServe() {
           exclude: /node_modules/,
           extensions: [".ts"]
         }),
-        nodeResolve({ extensions: [".ts"] })
+        nodeResolve({ extensions: [".ts"] }),
+        // Allow dynamic imports in CJS code to allow us to utilize
+        // ESM modules as part of the compiler.
+        {
+          name: "dynamic-import-polyfill",
+          renderDynamicImport() {
+            return {
+              left: "import(",
+              right: ")"
+            };
+          }
+        }
       ]
     }
   ];

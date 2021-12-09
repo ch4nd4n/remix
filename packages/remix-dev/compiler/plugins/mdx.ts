@@ -34,14 +34,18 @@ export function mdxPlugin(config: RemixConfig): esbuild.Plugin {
             [remarkMdxFrontmatter, { name: "attributes" }]
           ];
 
-          switch (typeof config.mdx) {
+          switch (typeof config.buildOptions.mdx) {
             case "object":
-              rehypePlugins.push(...(config.mdx.rehypePlugins || []));
-              remarkPlugins.push(...(config.mdx.remarkPlugins || []));
+              rehypePlugins.push(
+                ...(config.buildOptions.mdx.rehypePlugins || [])
+              );
+              remarkPlugins.push(
+                ...(config.buildOptions.mdx.remarkPlugins || [])
+              );
 
               break;
             case "function":
-              let mdxConfig = await config.mdx(args.path);
+              let mdxConfig = await config.buildOptions.mdx(args.path);
               rehypePlugins.push(...(mdxConfig?.rehypePlugins || []));
               remarkPlugins.push(...(mdxConfig?.remarkPlugins || []));
               break;

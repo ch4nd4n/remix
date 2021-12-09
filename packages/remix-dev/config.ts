@@ -70,10 +70,24 @@ export interface AppConfig {
    */
   devServerPort?: number;
   /**
-   * The delay before the dev server broadcasts a reload event
+   * The delay before the dev server broadcasts a reload event.
    */
   devServerBroadcastDelay?: number;
 
+  /**
+   * Configuration that effects how the bundles are generated.
+   */
+  buildOptions?: Partial<RemixBuildOptions>;
+
+  /**
+   * Additional MDX remark / rehype plugins.
+   * @deprecated Use `buildOptions.mdx` instead.
+   */
+  mdx?: RemixMdxConfig | RemixMdxConfigFunction;
+}
+
+export interface RemixBuildOptions {
+  serverFormat: "esm" | "cjs";
   mdx?: RemixMdxConfig | RemixMdxConfigFunction;
 }
 
@@ -141,7 +155,10 @@ export interface RemixConfig {
    */
   devServerBroadcastDelay: number;
 
-  mdx?: RemixMdxConfig | RemixMdxConfigFunction;
+  /**
+   * Configuration that effects how the bundles are generated.
+   */
+  buildOptions: RemixBuildOptions;
 }
 
 /**
@@ -169,6 +186,26 @@ export async function readConfig(
   } catch (error) {
     throw new Error(`Error loading Remix config in ${configFile}`);
   }
+
+  let buildOptions: RemixBuildOptions = {
+    serverFormat: "cjs",
+    mdx: appConfig.mdx
+  };
+
+  let packagePath = path.resolve(rootDirectory, "package.json");
+  try {
+    let pkgJson = require(packagePath);
+    if (pkgJson.type === "module") {
+      buildOptions.serverFormat = "esm";
+    }
+  } catch (error) {
+    throw new Error(`Missing "package.json" file in ${rootDirectory}`);
+  }
+
+  buildOptions = {
+    ...buildOptions,
+    ...(appConfig.buildOptions || {})
+  };
 
   let appDirectory = path.resolve(
     rootDirectory,
@@ -243,7 +280,7 @@ export async function readConfig(
     routes,
     serverBuildDirectory,
     serverMode,
-    mdx: appConfig.mdx
+    buildOptions
   };
 }
 
