@@ -3,9 +3,9 @@ import {
   ComboboxInput,
   ComboboxList,
   ComboboxOption,
-  ComboboxPopover
+  ComboboxPopover,
 } from "@reach/combobox";
-import { Form, useFetcher, useSearchParams } from "remix";
+import { Form, useFetcher, useSearchParams } from "@remix-run/react";
 
 import type { Lang } from "~/models/langs";
 
@@ -14,7 +14,7 @@ import comboboxStyles from "@reach/combobox/styles.css";
 
 export function links() {
   // Add them to the page when this route is active:
-  // https://remix.run/docs/en/v1/api/conventions#links
+  // https://remix.run/api/conventions#links
   return [{ rel: "stylesheet", href: comboboxStyles }];
 }
 
@@ -36,7 +36,7 @@ export default function Index() {
           <ComboboxInput
             id="showSearch"
             name="lang"
-            onChange={e => {
+            onChange={(e) => {
               // When the input changes, load the languages
               langs.load(`/lang-search?q=${e.target.value}`);
             }}

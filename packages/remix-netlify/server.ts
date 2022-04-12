@@ -1,21 +1,24 @@
-import type {
-  AppLoadContext,
-  ServerBuild,
-  ServerPlatform
-} from "@remix-run/server-runtime";
-import { createRequestHandler as createRemixRequestHandler } from "@remix-run/server-runtime";
-import type {
-  Response as NodeResponse,
-  RequestInit as NodeRequestInit
-} from "@remix-run/node";
 import {
   // This has been added as a global in node 15+
   AbortController,
-  formatServerError,
+  createRequestHandler as createRemixRequestHandler,
   Headers as NodeHeaders,
-  Request as NodeRequest
+  Request as NodeRequest,
 } from "@remix-run/node";
-import type { Handler, HandlerEvent, HandlerContext } from "@netlify/functions";
+import type {
+  Handler,
+  HandlerEvent,
+  HandlerContext,
+  HandlerResponse,
+} from "@netlify/functions";
+import type {
+  AppLoadContext,
+  ServerBuild,
+  Response as NodeResponse,
+  RequestInit as NodeRequestInit,
+} from "@remix-run/node";
+
+import { isBinaryType } from "./binaryTypes";
 
 /**
  * A function that returns the value to use as `context` in route `loader` and
@@ -24,23 +27,23 @@ import type { Handler, HandlerEvent, HandlerContext } from "@netlify/functions";
  * You can think of this as an escape hatch that allows you to pass
  * environment/platform-specific values through to your loader/action.
  */
-export interface GetLoadContextFunction {
-  (event: HandlerEvent, context: HandlerContext): AppLoadContext;
-}
+export type GetLoadContextFunction = (
+  event: HandlerEvent,
+  context: HandlerContext
+) => AppLoadContext;
 
-export type RequestHandler = ReturnType<typeof createRequestHandler>;
+export type RequestHandler = Handler;
 
 export function createRequestHandler({
   build,
   getLoadContext,
-  mode = process.env.NODE_ENV
+  mode = process.env.NODE_ENV,
 }: {
   build: ServerBuild;
   getLoadContext?: AppLoadContext;
   mode?: string;
-}): Handler {
-  let platform: ServerPlatform = { formatServerError };
-  let handleRequest = createRemixRequestHandler(build, platform, mode);
+}): RequestHandler {
+  let handleRequest = createRemixRequestHandler(build, mode);
 
   return async (event, context) => {
     let abortController = new AbortController();
@@ -55,15 +58,7 @@ export function createRequestHandler({
       loadContext
     )) as unknown as NodeResponse;
 
-    if (abortController.signal.aborted) {
-      response.headers.set("Connection", "close");
-    }
-
-    return {
-      statusCode: response.status,
-      multiValueHeaders: response.headers.raw(),
-      body: await response.text()
-    };
+    return sendRemixResponse(response, abortController);
   };
 }
 
@@ -85,12 +80,17 @@ export function createRemixRequest(
     method: event.httpMethod,
     headers: createRemixHeaders(event.multiValueHeaders),
     abortController,
-    signal: abortController?.signal
+    signal: abortController?.signal,
   };
 
   if (event.httpMethod !== "GET" && event.httpMethod !== "HEAD" && event.body) {
+    let isFormData = event.headers["content-type"]?.includes(
+      "multipart/form-data"
+    );
     init.body = event.isBase64Encoded
-      ? Buffer.from(event.body, "base64").toString()
+      ? isFormData
+        ? Buffer.from(event.body, "base64")
+        : Buffer.from(event.body, "base64").toString()
       : event.body;
   }
 
@@ -102,9 +102,9 @@ export function createRemixHeaders(
 ): NodeHeaders {
   let headers = new NodeHeaders();
 
-  for (const [key, values] of Object.entries(requestHeaders)) {
+  for (let [key, values] of Object.entries(requestHeaders)) {
     if (values) {
-      for (const value of values) {
+      for (let value of values) {
         headers.append(key, value);
       }
     }
@@ -136,4 +136,33 @@ function getRawPath(event: HandlerEvent): string {
   if (rawParams) rawPath += `?${rawParams}`;
 
   return rawPath;
+}
+
+export async function sendRemixResponse(
+  nodeResponse: NodeResponse,
+  abortController: AbortController
+): Promise<HandlerResponse> {
+  if (abortController.signal.aborted) {
+    nodeResponse.headers.set("Connection", "close");
+  }
+
+  let contentType = nodeResponse.headers.get("Content-Type");
+  let isBinary = isBinaryType(contentType);
+  let body;
+  let isBase64Encoded = false;
+
+  if (isBinary) {
+    let blob = await nodeResponse.arrayBuffer();
+    body = Buffer.from(blob).toString("base64");
+    isBase64Encoded = true;
+  } else {
+    body = await nodeResponse.text();
+  }
+
+  return {
+    statusCode: nodeResponse.status,
+    multiValueHeaders: nodeResponse.headers.raw(),
+    body,
+    isBase64Encoded,
+  };
 }
